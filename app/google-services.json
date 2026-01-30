@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "321189785531",
+    "project_id": "pricewiseandroidapp",
+    "storage_bucket": "pricewiseandroidapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:321189785531:android:3cd45e806a195f3bdc5e9e",
+        "android_client_info": {
+          "package_name": "com.nex.pricewiseandroidapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "321189785531-vhbvlmrnj9j2r10pr061ios6cc02v664.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nex.pricewiseandroidapp",
+            "certificate_hash": "9340b18a37d03f19b318324ce6339a3c16cd31f8"
+          }
+        },
+        {
+          "client_id": "321189785531-8n69uikm4q6sgbeon8bbh851q7m8hde3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCplA5o5_K9B-rVttxGuKgyrj-tDY0NGug"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "321189785531-8n69uikm4q6sgbeon8bbh851q7m8hde3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

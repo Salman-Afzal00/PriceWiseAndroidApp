@@ -1,19 +1,9 @@
 package com.nex.pricewiseandroidapp.auth.login
 
+import android.widget.Toast
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -23,26 +13,14 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -50,172 +28,291 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.nex.pricewiseandroidapp.R
-import com.nex.pricewiseandroidapp.ui.theme.PriceWiseAndroidAppTheme
+import com.nex.pricewiseandroidapp.auth.AuthState
+import com.nex.pricewiseandroidapp.auth.AuthViewModel
+import kotlinx.coroutines.launch
 
-// --- Color Constants ---
+// --- Theme Constants ---
 val BrandBlue = Color(0xFF137FEC)
-val InputGray = Color(0xFFF3F5F7) // Very light gray for input backgrounds
-val TextGray = Color(0xFF6B7280)  // Slate gray for subtitles
+val InputGray = Color(0xFFF3F5F7)
+val TextGray = Color(0xFF6B7280)
 
 @Composable
-fun LoginAccount(navController: NavController) {
-    val viewModel: LoginViewModel = viewModel()
+fun LoginScreen(navController: NavController) {
+
+    val viewModel: AuthViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val authState by viewModel.authState.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val coroutineScope = rememberCoroutineScope()
 
     var passwordVisible by remember { mutableStateOf(false) }
+    var emailError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+    var showVerificationDialog by remember { mutableStateOf(false) }
 
-    fun isValidEmail(email: String): Boolean =
-        android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()
+    /* ---------------- Credential Manager (Modern Google Sign-In) ---------------- */
 
-    fun isValidPassword(password: String): Boolean =
-        "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,}$".toRegex().matches(password)
+    val credentialManager = remember { CredentialManager.create(context) }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = Color.White
-    ) {
+    fun signInWithGoogle() {
+        coroutineScope.launch {
+            try {
+                val googleIdOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(context.getString(R.string.default_web_client_id))
+                    .setAutoSelectEnabled(true)
+                    .build()
+
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleIdOption)
+                    .build()
+
+                val result = credentialManager.getCredential(
+                    request = request,
+                    context = context,
+                )
+
+                val credential = result.credential
+                if (credential is CustomCredential &&
+                    credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                    try {
+                        val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                        viewModel.signInWithGoogle(googleIdTokenCredential.idToken)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to parse Google ID", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Toast.makeText(context, "Unexpected credential type", Toast.LENGTH_SHORT).show()
+                }
+
+            } catch (e: GetCredentialException) {
+                if (e.message?.contains("User cancelled") == false) {
+                    Toast.makeText(context, "Sign-in failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /* ---------------- Auth State Observer ---------------- */
+
+    LaunchedEffect(authState) {
+        when (authState) {
+            is AuthState.Success -> {
+                navController.navigate("home") {
+                    popUpTo("login") { inclusive = true }
+                }
+                viewModel.resetAuthState()
+            }
+            is AuthState.VerificationNeeded -> showVerificationDialog = true
+            is AuthState.PasswordResetSent -> {
+                Toast.makeText(context, "Password reset email sent", Toast.LENGTH_LONG).show()
+                viewModel.resetAuthState()
+            }
+            is AuthState.Error -> {
+                Toast.makeText(context, (authState as AuthState.Error).message, Toast.LENGTH_LONG).show()
+                viewModel.resetAuthState()
+            }
+            else -> Unit
+        }
+    }
+
+    /* ---------------- Verification Dialog ---------------- */
+
+    if (showVerificationDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showVerificationDialog = false
+                viewModel.resetAuthState()
+            },
+            title = { Text("Email Verification Required") },
+            text = { Text("Please verify your email before logging in.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.resendVerificationEmail()
+                    showVerificationDialog = false
+                }) { Text("Resend Email") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showVerificationDialog = false
+                    viewModel.resetAuthState()
+                }) { Text("Dismiss") }
+            }
+        )
+    }
+
+    /* ---------------- Validation ---------------- */
+
+    fun validate(): Boolean {
+        emailError = if (uiState.email.isBlank()) "Email is required" else null
+        passwordError = if (uiState.password.isBlank()) "Password is required" else null
+        return emailError == null && passwordError == null
+    }
+
+    /* ---------------- UI Implementation ---------------- */
+
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
+                .padding(24.dp)
                 .imePadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            // --- HEADER ---
+            // --- Header Section ---
             Spacer(modifier = Modifier.height(40.dp))
 
-            // Logo
-            Box(
-                modifier = Modifier
-                    .height(80.dp)
-                    .width(180.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.logo_app), // Ensure this resource exists
-                    contentDescription = "Price Wise Logo",
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            Image(
+                painter = painterResource(id = R.drawable.logo_app),
+                contentDescription = null,
+                modifier = Modifier.size(120.dp) // Adjust size as per your logo's aspect ratio
+            )
 
-            Spacer(modifier = Modifier.height(56.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             Text(
                 text = "Welcome Back",
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold
-                ),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
                 color = Color.Black
             )
 
             Text(
                 text = "Log in to compare prices and find\nthe best deals instantly.",
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp
-                ),
                 color = TextGray,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 12.dp, bottom = 32.dp)
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
             )
 
-            // --- INPUTS ---
-            // Note: Updated visual style to match the "filled box" look
+            // --- Input Fields ---
 
             CustomStyledTextField(
                 value = uiState.email,
-                onValueChange = { viewModel.setEmail(it) },
+                onValueChange = {
+                    viewModel.setEmail(it)
+                    emailError = null
+                },
                 label = "Email Address",
                 leadingIcon = Icons.Outlined.Email,
-                isError = uiState.email.isNotEmpty() && !isValidEmail(uiState.email),
-                errorMessage = "Please enter a valid email address",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next)
+                errorMessage = emailError,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next
+                )
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             CustomStyledTextField(
                 value = uiState.password,
-                onValueChange = { viewModel.setPassword(it) },
+                onValueChange = {
+                    viewModel.setPassword(it)
+                    passwordError = null
+                },
                 label = "Password",
                 leadingIcon = Icons.Outlined.Lock,
-                isError = uiState.password.isNotEmpty() && !isValidPassword(uiState.password),
-                errorMessage = "Min 8 chars, 1 uppercase, 1 number",
+                errorMessage = passwordError,
                 isPassword = true,
                 passwordVisible = passwordVisible,
                 onPasswordToggle = { passwordVisible = !passwordVisible },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done)
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                )
             )
 
-            // Forgot Password
+            // Forgot Password Link
             Box(
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                TextButton(onClick = { /* Navigate */ }) {
+                TextButton(onClick = { navController.navigate("forgot_password") }) {
                     Text(
                         text = "Forgot Password?",
                         color = BrandBlue,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Sign In Button
+            // --- Main Action Button ---
+
             Button(
-                onClick = { /* Login Action */ },
+                onClick = {
+                    if (validate()) {
+                        focusManager.clearFocus()
+                        viewModel.signInWithEmailAndPassword()
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = BrandBlue),
                 shape = RoundedCornerShape(12.dp),
-                elevation = ButtonDefaults.buttonElevation(0.dp)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = BrandBlue
+                ),
+                enabled = authState != AuthState.Loading
             ) {
-                Text(
-                    text = "Log In",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                if (authState == AuthState.Loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                } else {
+                    Text(
+                        text = "Log In",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Divider
+            // --- "Or continue with" Divider ---
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFEEEEEE))
                 Text(
-                    text = "Or continue with",
+                    text = "OR",
                     modifier = Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = TextGray
                 )
                 HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFEEEEEE))
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Google Button (Grey Background Style)
+            // --- Google Button ---
+
             Button(
-                onClick = { /* Google Action */ },
+                onClick = { signInWithGoogle() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -228,59 +325,60 @@ fun LoginAccount(navController: NavController) {
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.ic_google),
-                    contentDescription = null,
+                    contentDescription = "Google Logo",
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
-                    text = "Google",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold
+                    text = "Continue with Google", // Changed to match design exactly
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp
                 )
             }
 
+
+            // --- Footer ---
             Spacer(modifier = Modifier.weight(1f))
 
-            // Footer
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 24.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Don't have an account? ",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextGray
+                    color = TextGray,
+                    fontSize = 14.sp
                 )
                 Text(
                     text = "Sign Up",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
                     color = BrandBlue,
-                    modifier = Modifier.padding(start = 4.dp)
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    modifier = Modifier.clickable {
+                        navController.navigate("register")
+                    }
                 )
             }
         }
     }
 }
 
-// Custom Component to match the "Filled Box" design
+// --- Reusable Component ---
+
 @Composable
 fun CustomStyledTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
     leadingIcon: ImageVector,
-    isError: Boolean = false,
     errorMessage: String? = null,
     isPassword: Boolean = false,
     passwordVisible: Boolean = false,
     onPasswordToggle: () -> Unit = {},
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column {
         OutlinedTextField(
             value = value,
             onValueChange = onValueChange,
@@ -290,7 +388,7 @@ fun CustomStyledTextField(
                 Icon(
                     imageVector = leadingIcon,
                     contentDescription = null,
-                    tint = Color(0xFF6B7280) // Darker gray for icons
+                    tint = Color(0xFF9CA3AF) // Muted icon color
                 )
             },
             trailingIcon = if (isPassword) {
@@ -299,7 +397,7 @@ fun CustomStyledTextField(
                         Icon(
                             imageVector = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                             contentDescription = null,
-                            tint = Color(0xFF6B7280)
+                            tint = Color(0xFF9CA3AF)
                         )
                     }
                 }
@@ -307,35 +405,28 @@ fun CustomStyledTextField(
             visualTransformation = if (isPassword && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = keyboardOptions,
             singleLine = true,
-            isError = isError,
+            isError = errorMessage != null,
             shape = RoundedCornerShape(12.dp),
-            // Crucial: Set colors to make the border transparent and background gray
             colors = OutlinedTextFieldDefaults.colors(
                 focusedContainerColor = InputGray,
                 unfocusedContainerColor = InputGray,
                 disabledContainerColor = InputGray,
-                focusedBorderColor = BrandBlue, // Show blue border only when focused
-                unfocusedBorderColor = Color.Transparent, // No border when unfocused (Filled look)
+                errorContainerColor = InputGray,
+                focusedBorderColor = BrandBlue,
+                unfocusedBorderColor = Color.Transparent,
                 errorBorderColor = MaterialTheme.colorScheme.error,
                 focusedLabelColor = Color.Black,
-                unfocusedLabelColor = Color.Gray
+                unfocusedLabelColor = TextGray
             )
         )
-        if (isError && errorMessage != null) {
+
+        if (errorMessage != null) {
             Text(
                 text = errorMessage,
                 color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 12.sp,
                 modifier = Modifier.padding(start = 8.dp, top = 4.dp)
             )
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun LoginAccountPreview() {
-    PriceWiseAndroidAppTheme {
-        LoginAccount(navController = rememberNavController())
     }
 }
