@@ -26,6 +26,27 @@ class AuthViewModel : ViewModel() {
     val authState = _authState.asStateFlow()
 
     /* ---------------- UI setters ---------------- */
+    private val _isUserLoaded = MutableStateFlow(false)
+    val isUserLoaded = _isUserLoaded.asStateFlow()
+
+    init {
+        checkCurrentUser()
+    }
+
+    private fun checkCurrentUser() {
+        viewModelScope.launch {
+            val currentUser = auth.currentUser
+            if (currentUser != null) {
+                // Refresh user state to get the latest verification status
+                try {
+                    currentUser.reload().await()
+                } catch (e: Exception) {
+                    // User might be offline, proceed with cached status
+                }
+            }
+            _isUserLoaded.value = true
+        }
+    }
 
     fun setEmail(email: String) {
         _uiState.update { it.copy(email = email) }
@@ -223,6 +244,15 @@ class AuthViewModel : ViewModel() {
     fun resetAuthState() {
         _authState.value = AuthState.Idle
     }
+    fun isEmailVerified(): Boolean {
+        // This check is now synchronous and safe to call after the user is loaded.
+        return auth.currentUser?.isEmailVerified == true
+    }
+
+    fun logout() {
+        auth.signOut()
+        _authState.value = AuthState.UserLoggedOut
+    }
 }
 
 /* ---------------- Models ---------------- */
@@ -242,4 +272,5 @@ sealed class AuthState {
     data class AccountCreated(val message: String) : AuthState()
     data class VerificationNeeded(val message: String) : AuthState()
     object PasswordResetSent : AuthState()
+    object UserLoggedOut : AuthState()
 }

@@ -12,11 +12,12 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.nex.pricewiseandroidapp.auth.AuthViewModel
+import com.nex.pricewiseandroidapp.navigation.MainNavigationBar
 import com.nex.pricewiseandroidapp.navigation.Screen
 
-// A new composable that will host our main app content
 @Composable
-fun MainScreen() {
+fun MainScreen(authViewModel: AuthViewModel) { // Accept shared ViewModel
     val navController = rememberNavController()
 
     Scaffold(
@@ -24,37 +25,28 @@ fun MainScreen() {
         containerColor = Color(0xFFF3F5F7) // BackgroundGray from your theme
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
-            // Setup the NavHost for the main screens
-            MainScreensNavHost(navController = navController)
+            // Pass the shared ViewModel to the NavHost
+            MainScreensNavHost(navController = navController, authViewModel = authViewModel)
         }
     }
 }
 
 @Composable
-fun MainScreensNavHost(navController: NavHostController) {
+fun MainScreensNavHost(navController: NavHostController, authViewModel: AuthViewModel) { // Accept shared ViewModel
     NavHost(
         navController = navController,
         startDestination = Screen.Home.route
     ) {
         composable(Screen.Home.route) {
-            // Replace with your actual Home Screen
-            PlaceholderScreen("Home Screen")
+            HomeScreen(navController = navController)
         }
-        composable(Screen.Search.route) {
-            // Replace with your actual Search Screen
-            PlaceholderScreen("Search Screen")
+        composable(Screen.Chat.route) {
+            ChatScreen(navController = navController)
         }
         composable(Screen.Profile.route) {
-            // Here we use your existing ProfileScreen
-            ProfileScreen(navController = navController)
+            // Pass the shared ViewModel to the ProfileScreen
+            ProfileScreen(navController = navController, authViewModel = authViewModel)
         }
     }
 }
 
-// You can use this as a temporary screen until you build the others
-@Composable
-fun PlaceholderScreen(screenTitle: String) {
-    Box(modifier = Modifier.padding(16.dp)) {
-        Text(text = "This is the $screenTitle")
-    }
-}

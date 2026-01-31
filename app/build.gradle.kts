@@ -70,4 +70,5 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.firebase.firestore)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.core.splashscreen)
 }
